@@ -1,0 +1,19 @@
+[Unit]
+Description=Meshtastic Discord bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshtastic-bridge
+Group=meshtastic-bridge
+WorkingDirectory=/opt/meshtastic-discord-bridge
+EnvironmentFile=/etc/meshtastic-discord-bridge.env
+ExecStart=/usr/bin/python3 /opt/meshtastic-discord-bridge/meshtastic_discord_bridge.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

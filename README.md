@@ -1,37 +1,62 @@
 # meshtastic_discord_bridge
 
-A Discord bot which bridges discussions between a Discord channel and a Meshtastic mesh through a locally connected radio
+A small Discord bot that bridges text between one Discord channel and a locally connected Meshtastic radio.
 
-## Requirements
+## Safety model
 
-- Python
-- A supported Meshtastic radio connected via USB 
-- Discord key and a channel
+- Mesh channel 0 is the only bidirectional channel.
+- Incoming channel 1 (`LongFast`) text is forwarded to Discord with an explicit `[READ-ONLY]` marker.
+- Packets on other channels are rejected. No incoming channel-1 content is ever used as a Discord-to-mesh transmit request.
+- Discord-to-mesh payloads always include the sender's display name and Discord user ID, for example `Alice (123456789): hello`.
+- Every received, forwarded, rejected, and transmit attempted/succeeded/failed event is written as one JSONL audit record with a correlation ID.
 
-## Installation and Startup
+## Install and configure
 
-Get a Discord Bot account and invite the bot to a server.  [Instructions](https://discordpy.readthedocs.io/en/stable/discord.html)
+Python 3.10+ and a supported USB Meshtastic radio are required. Copy `sampledotenvfile` to `.env`, then set `DISCORD_TOKEN` and `DISCORD_CHANNEL_ID` (the numeric ID of the one permitted Discord channel).
 
-Fill in the values for your environment in sampledotenvfile, and rename to .env 
+By default the bridge opens `/dev/ttyUSB0`. Override it with `MESHTASTIC_SERIAL_PORT`, or set `MESHTASTIC_HOSTNAME` to use a TCP-connected radio instead.
 
-If you connect to your mesh device via TCP, specify the hostname in MESHTASTIC_HOSTNAME.  If no hostname is specified, a serial interface is assumed.
-
-```
+```sh
 python3 -m pip install -r requirements.txt
-python meshtastic_discord_bridge.py
+python3 meshtastic_discord_bridge.py
 ```
 
-## Usage
+The original commands remain available:
 
-You can now interact with Meshtastic through Discord.
+```text
+$sendprimary <message>
+$send nodenum=########### <message>
+$activenodes
+```
 
+Messages longer than 225 characters are truncated to fit the Meshtastic text limit. Messages from another Discord channel, the bot itself, and non-send commands are rejected and audited.
+
+## Optional multimon-ng input
+
+Set one of the following. The adapter is intentionally line-oriented and preserves each non-empty decoder line as its payload; it does not assume a particular multimon-ng decoder or output format.
+
+```dotenv
+MULTIMON_SOURCE="stdin"
+MULTIMON_SOURCE="file:/var/lib/meshtastic/multimon.log"
+MULTIMON_SOURCE="command:multimon-ng -a POCSAG512 -t raw -"
 ```
-$sendprimary <message> sends a message up to 225 characters to the the primary channel
-$send nodenum=########### <message> sends a message up to 225 characters to nodenum ###########
-$activenodes will list all nodes seen in the last 15 minutes
+
+`MULTIMON_COMMAND` and `MULTIMON_FILE` are equivalent convenience variables. Each decoded line is sent on channel 0 only and is audited like any other transmit.
+
+## Audit log
+
+`AUDIT_LOG_PATH` defaults to `bridge-audit.jsonl`; set it to `-` for stdout. Records contain an ISO-8601 UTC timestamp, event name, correlation ID, and packet/message IDs where available. Use a log rotation policy for long-running deployments.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s tests -v
 ```
+
+## systemd example
+
+See [`systemd/meshtastic-discord-bridge.service.example`](systemd/meshtastic-discord-bridge.service.example). It runs as a dedicated user, uses an explicit working directory, and expects secrets/configuration in `/etc/meshtastic-discord-bridge.env`.
 
 ## Screenshot
 
 ![Interacting with Meshtastic through Discord](/DiscordScreenshot.png)
-
