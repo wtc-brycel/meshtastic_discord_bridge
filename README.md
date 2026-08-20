@@ -5,8 +5,8 @@ A small Discord bot that bridges text between one Discord channel and a locally 
 ## Safety model
 
 - Mesh channel 0 is the only bidirectional channel.
-- Incoming channel 1 (`LongFast`) text is forwarded to Discord with an explicit `[READ-ONLY]` marker.
-- Packets on other channels are rejected. No incoming channel-1 content is ever used as a Discord-to-mesh transmit request.
+- Incoming nonzero channels (channel 1, `LongFast`, and any additional configured channels) are forwarded to Discord with an explicit `[READ-ONLY]` marker.
+- Packets on unknown channels are rejected. No nonzero-channel content is ever used as a Discord-to-mesh transmit request.
 - Discord-to-mesh payloads always include the sender's display name and Discord user ID, for example `Alice (123456789): hello`.
 - Every received, forwarded, rejected, and transmit attempted/succeeded/failed event is written as one JSONL audit record with a correlation ID.
 

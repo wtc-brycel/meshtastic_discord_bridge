@@ -40,11 +40,13 @@ class BridgePolicyTests(unittest.TestCase):
         self.assertEqual(mesh_channel(packet("LongFast")), 1)
         self.assertEqual(classify_mesh_channel(packet(0)), "primary")
         self.assertEqual(classify_mesh_channel(packet("LongFast")), "read_only")
-        self.assertEqual(classify_mesh_channel(packet(2)), "rejected")
+        self.assertEqual(classify_mesh_channel(packet(2)), "read_only")
+        self.assertEqual(classify_mesh_channel(packet(7)), "read_only")
 
     def test_read_only_marker_is_explicit(self):
         self.assertNotIn("READ-ONLY", format_mesh_message(packet(0)))
         self.assertIn("[READ-ONLY]", format_mesh_message(packet("LongFast")))
+        self.assertIn("[READ-ONLY]", format_mesh_message(packet(2)))
 
     def test_discord_format_has_name_and_id(self):
         message = SimpleNamespace(

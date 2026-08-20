@@ -164,7 +164,7 @@ def classify_mesh_channel(packet: dict[str, Any]) -> str:
     channel = mesh_channel(packet)
     if channel == PRIMARY_CHANNEL:
         return "primary"
-    if channel == READ_ONLY_CHANNEL:
+    if channel is not None and channel > PRIMARY_CHANNEL:
         return "read_only"
     return "rejected"
 
