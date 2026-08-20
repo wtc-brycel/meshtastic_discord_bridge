@@ -356,7 +356,22 @@ def _build_client(config: Config, audit: AuditLogger) -> Any:
             import meshtastic.tcp_interface
             if config.meshtastic_hostname:
                 return meshtastic.tcp_interface.TCPInterface(config.meshtastic_hostname)
-            return meshtastic.serial_interface.SerialInterface(devPath=config.serial_port)
+            # Some 2.7.x firmware emits diagnostic frames which are not valid
+            # FromRadio messages. The stock StreamInterface logs a traceback
+            # for each one. Probe before delegating so the reader can discard
+            # only malformed frames and immediately resynchronize.
+            from google.protobuf.message import DecodeError
+            from meshtastic.protobuf import mesh_pb2
+
+            class BridgeSerialInterface(meshtastic.serial_interface.SerialInterface):
+                def _handleFromRadio(self, payload: bytes) -> None:
+                    try:
+                        mesh_pb2.FromRadio().ParseFromString(payload)
+                    except DecodeError:
+                        return
+                    super()._handleFromRadio(payload)
+
+            return BridgeSerialInterface(devPath=config.serial_port)
 
         def receive_mesh(self, packet: dict[str, Any], _interface: Any = None) -> None:
             pid = packet_id(packet)
