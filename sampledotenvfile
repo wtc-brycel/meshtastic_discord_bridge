@@ -13,3 +13,9 @@ AUDIT_LOG_PATH="bridge-audit.jsonl"
 # MULTIMON_SOURCE="command:multimon-ng -a POCSAG512 -t raw -"
 # MULTIMON_COMMAND="multimon-ng -a POCSAG512 -t raw -"
 # MULTIMON_FILE="/var/lib/meshtastic/multimon.log"
+
+# Optional Star FVP10 output. Disabled by default. The transport receives each
+# inbound mesh text message on stdin; this default uses the CUPS raw queue.
+# FVP10_ENABLED="false"
+# FVP10_TRANSPORT_COMMAND="lpr -P fvp10-raw -l"
+# FVP10_TIMEOUT_SECONDS="15"

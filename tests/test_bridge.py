@@ -15,6 +15,7 @@ from meshtastic_discord_bridge import (
     mesh_channel,
     parse_multimon_line,
     MultimonLineSource,
+    send_fvp10_transport,
 )
 
 
@@ -34,6 +35,31 @@ class BridgePolicyTests(unittest.TestCase):
             config = Config.from_env()
         self.assertEqual(config.discord_channel_id, 99)
         self.assertEqual(config.serial_port, "/dev/ttyUSB0")
+        self.assertFalse(config.fvp10_enabled)
+
+    def test_fvp10_configuration_is_optional(self):
+        with patch.dict(os.environ, {
+            "DISCORD_TOKEN": "token",
+            "DISCORD_CHANNEL_ID": "99",
+            "FVP10_ENABLED": "yes",
+            "FVP10_TRANSPORT_COMMAND": "lpr -P custom -l",
+        }, clear=True):
+            config = Config.from_env()
+        self.assertTrue(config.fvp10_enabled)
+        self.assertEqual(config.fvp10_transport_command, "lpr -P custom -l")
+
+    @patch("meshtastic_discord_bridge.subprocess.run")
+    def test_fvp10_transport_uses_stdin_without_shell(self, run):
+        run.return_value.returncode = 0
+        send_fvp10_transport("lpr -P fvp10-raw -l", "mesh message")
+        run.assert_called_once_with(
+            ["lpr", "-P", "fvp10-raw", "-l"],
+            input="mesh message\n",
+            text=True,
+            capture_output=True,
+            timeout=15.0,
+            check=False,
+        )
 
     def test_channel_filtering(self):
         self.assertEqual(mesh_channel(packet(0)), 0)

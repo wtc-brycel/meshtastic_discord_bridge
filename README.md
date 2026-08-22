@@ -43,6 +43,22 @@ MULTIMON_SOURCE="command:multimon-ng -a POCSAG512 -t raw -"
 
 `MULTIMON_COMMAND` and `MULTIMON_FILE` are equivalent convenience variables. Each decoded line is sent on channel 0 only and is audited like any other transmit.
 
+## Optional Star FVP10 output
+
+Set `FVP10_ENABLED="true"` to send each inbound mesh text message to the
+configured transport command as stdin. It is disabled by default and does not
+open a second Meshtastic connection. The default command uses the CUPS raw
+queue:
+
+```dotenv
+FVP10_ENABLED="true"
+FVP10_TRANSPORT_COMMAND="lpr -P fvp10-raw -l"
+FVP10_TIMEOUT_SECONDS="15"
+```
+
+The command is executed without a shell. Transport attempts, successes, and
+failures are written to the JSONL audit log independently of Discord delivery.
+
 ## Audit log
 
 `AUDIT_LOG_PATH` defaults to `bridge-audit.jsonl`; set it to `-` for stdout. Records contain an ISO-8601 UTC timestamp, event name, correlation ID, and packet/message IDs where available. Use a log rotation policy for long-running deployments.

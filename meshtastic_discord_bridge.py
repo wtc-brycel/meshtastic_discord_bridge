@@ -46,6 +46,18 @@ MAX_MESH_TEXT = 225
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
 @dataclass(frozen=True)
 class Config:
     discord_token: str
@@ -57,6 +69,9 @@ class Config:
     multimon_command: Optional[str] = None
     multimon_file: Optional[str] = None
     poll_seconds: float = 0.25
+    fvp10_enabled: bool = False
+    fvp10_transport_command: str = "lpr -P fvp10-raw -l"
+    fvp10_timeout_seconds: float = 15.0
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -75,6 +90,11 @@ class Config:
             multimon_command=os.getenv("MULTIMON_COMMAND", "").strip() or None,
             multimon_file=os.getenv("MULTIMON_FILE", "").strip() or None,
             poll_seconds=float(os.getenv("BRIDGE_POLL_SECONDS", "0.25")),
+            fvp10_enabled=_env_bool("FVP10_ENABLED"),
+            fvp10_transport_command=os.getenv(
+                "FVP10_TRANSPORT_COMMAND", "lpr -P fvp10-raw -l"
+            ).strip() or "lpr -P fvp10-raw -l",
+            fvp10_timeout_seconds=float(os.getenv("FVP10_TIMEOUT_SECONDS", "15")),
         )
 
 
@@ -123,6 +143,29 @@ class AuditLogger:
                 self._owned_stream.close()
                 self._owned_stream = None
                 self._stream = None
+
+
+def send_fvp10_transport(command: str, payload: str, timeout_seconds: float = 15.0) -> None:
+    """Send one rendered message to a configured FVP10 transport command.
+
+    The command receives the message on stdin. It is tokenized without a
+    shell, so environment configuration cannot turn message text into shell
+    syntax. A typical transport is ``lpr -P fvp10-raw -l``.
+    """
+    args = shlex.split(command)
+    if not args:
+        raise ValueError("FVP10 transport command is empty")
+    result = subprocess.run(
+        args,
+        input=payload.rstrip() + "\n",
+        text=True,
+        capture_output=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()
+        raise RuntimeError(f"transport exited {result.returncode}: {detail}")
 
 
 def _value(packet: dict[str, Any], *keys: str) -> Any:
@@ -432,6 +475,21 @@ def _build_client(config: Config, audit: AuditLogger) -> Any:
                 except Exception as exc:
                     audit.log("forward_failed", correlation_id=correlation,
                               packet_id=pid, destination="discord", error=str(exc))
+                if config.fvp10_enabled:
+                    audit.log("transport_attempted", correlation_id=correlation,
+                              packet_id=pid, destination="fvp10")
+                    try:
+                        await asyncio.to_thread(
+                            send_fvp10_transport,
+                            config.fvp10_transport_command,
+                            payload,
+                            config.fvp10_timeout_seconds,
+                        )
+                        audit.log("transport_succeeded", correlation_id=correlation,
+                                  packet_id=pid, destination="fvp10")
+                    except Exception as exc:
+                        audit.log("transport_failed", correlation_id=correlation,
+                                  packet_id=pid, destination="fvp10", error=str(exc))
 
         async def multimon_loop(self) -> None:
             await self.wait_until_ready()
