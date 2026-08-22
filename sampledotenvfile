@@ -15,7 +15,7 @@ AUDIT_LOG_PATH="bridge-audit.jsonl"
 # MULTIMON_FILE="/var/lib/meshtastic/multimon.log"
 
 # Optional Star FVP10 output. Disabled by default. The transport receives each
-# inbound mesh text message on stdin; this default uses the CUPS raw queue.
+# inbound mesh text message on stdin; this default uses the attached FVP10 CUPS queue.
 # FVP10_ENABLED="false"
-# FVP10_TRANSPORT_COMMAND="lpr -P fvp10-raw -l"
+# FVP10_TRANSPORT_COMMAND="lp -d star -o raw"
 # FVP10_TIMEOUT_SECONDS="15"

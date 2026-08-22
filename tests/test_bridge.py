@@ -15,6 +15,7 @@ from meshtastic_discord_bridge import (
     mesh_channel,
     parse_multimon_line,
     MultimonLineSource,
+    render_fvp10_receipt,
     send_fvp10_transport,
 )
 
@@ -48,14 +49,22 @@ class BridgePolicyTests(unittest.TestCase):
         self.assertTrue(config.fvp10_enabled)
         self.assertEqual(config.fvp10_transport_command, "lpr -P custom -l")
 
+    def test_fvp10_receipt_is_native_80mm_star_line(self):
+        receipt = render_fvp10_receipt("[READ-ONLY] Node !abc writes: hello")
+        self.assertTrue(receipt.startswith(b"\x1b@"))
+        self.assertIn(b"MESHTASTIC MESSAGE\n", receipt)
+        self.assertIn(b"[READ-ONLY] Node !abc writes: hello\n", receipt)
+        self.assertTrue(receipt.endswith(b"\x1bd\x03"))
+        self.assertNotIn(b"%PDF", receipt)
+
     @patch("meshtastic_discord_bridge.subprocess.run")
     def test_fvp10_transport_uses_stdin_without_shell(self, run):
         run.return_value.returncode = 0
-        send_fvp10_transport("lpr -P fvp10-raw -l", "mesh message")
+        send_fvp10_transport("lpr -P fvp10-raw -l", b"mesh message\n")
         run.assert_called_once_with(
             ["lpr", "-P", "fvp10-raw", "-l"],
-            input="mesh message\n",
-            text=True,
+            input=b"mesh message\n",
+            text=False,
             capture_output=True,
             timeout=15.0,
             check=False,

@@ -16,6 +16,7 @@ import re
 import shlex
 import subprocess
 import sys
+import textwrap
 import threading
 import uuid
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ except ImportError:  # pragma: no cover
 PRIMARY_CHANNEL = 0
 READ_ONLY_CHANNEL = 1
 MAX_MESH_TEXT = 225
+FVP10_COLUMNS = 48  # Star FVP10 80 mm native Font A at 12 cpi.
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -70,7 +72,7 @@ class Config:
     multimon_file: Optional[str] = None
     poll_seconds: float = 0.25
     fvp10_enabled: bool = False
-    fvp10_transport_command: str = "lpr -P fvp10-raw -l"
+    fvp10_transport_command: str = "lp -d star -o raw"
     fvp10_timeout_seconds: float = 15.0
 
     @classmethod
@@ -92,8 +94,8 @@ class Config:
             poll_seconds=float(os.getenv("BRIDGE_POLL_SECONDS", "0.25")),
             fvp10_enabled=_env_bool("FVP10_ENABLED"),
             fvp10_transport_command=os.getenv(
-                "FVP10_TRANSPORT_COMMAND", "lpr -P fvp10-raw -l"
-            ).strip() or "lpr -P fvp10-raw -l",
+                "FVP10_TRANSPORT_COMMAND", "lp -d star -o raw"
+            ).strip() or "lp -d star -o raw",
             fvp10_timeout_seconds=float(os.getenv("FVP10_TIMEOUT_SECONDS", "15")),
         )
 
@@ -145,10 +147,50 @@ class AuditLogger:
                 self._stream = None
 
 
-def send_fvp10_transport(command: str, payload: str, timeout_seconds: float = 15.0) -> None:
+def _receipt_ascii(value: str) -> str:
+    replacements = {
+        "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+        "\u2013": "-", "\u2014": "--", "\u2026": "...", "\u2022": "*",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    return value.encode("ascii", errors="replace").decode("ascii")
+
+
+def _receipt_lines(value: str, width: int = FVP10_COLUMNS) -> list[str]:
+    lines: list[str] = []
+    for paragraph in _receipt_ascii(value).splitlines():
+        lines.extend(textwrap.wrap(
+            paragraph.strip(), width=width, break_long_words=False,
+            break_on_hyphens=False,
+        ) or [""])
+    return lines or [""]
+
+
+def render_fvp10_receipt(payload: str) -> bytes:
+    """Render a tested 80 mm Star Line Mode receipt (576 dots / 48 columns)."""
+    esc, gs = b"\x1b", b"\x1d"
+    data = bytearray(esc + b"@")
+    data += esc + b"M"                         # Font A, 12 cpi = 48 columns.
+    data += esc + gs + b"a\x01"                # centered header
+    data += esc + b"E" + esc + b"-\x01" + esc + b"i\x01\x00"
+    data += b"MESHTASTIC MESSAGE\n"
+    data += esc + b"i\x00\x00" + esc + b"-\x00" + esc + b"E"
+    data += (b"-" * FVP10_COLUMNS) + b"\n"
+    data += esc + gs + b"a\x00"                # left aligned body
+    for line in _receipt_lines(payload):
+        data += line.encode("ascii", errors="replace") + b"\n"
+    data += b"-" * FVP10_COLUMNS + b"\n"
+    data += esc + gs + b"a\x01" + b"APEX MESHTASTIC BRIDGE\n"
+    data += esc + gs + b"a\x00" + b"\n\n\n"
+    data += esc + b"d\x03"                    # partial feed and cut
+    return bytes(data)
+
+
+def send_fvp10_transport(command: str, payload: bytes | str, timeout_seconds: float = 15.0) -> None:
     """Send one rendered message to a configured FVP10 transport command.
 
-    The command receives the message on stdin. It is tokenized without a
+    The command receives a native Star Line receipt on stdin. It is tokenized without a
     shell, so environment configuration cannot turn message text into shell
     syntax. A typical transport is ``lpr -P fvp10-raw -l``.
     """
@@ -157,8 +199,8 @@ def send_fvp10_transport(command: str, payload: str, timeout_seconds: float = 15
         raise ValueError("FVP10 transport command is empty")
     result = subprocess.run(
         args,
-        input=payload.rstrip() + "\n",
-        text=True,
+        input=payload if isinstance(payload, bytes) else payload.encode("ascii", errors="replace"),
+        text=False,
         capture_output=True,
         timeout=timeout_seconds,
         check=False,
@@ -482,7 +524,7 @@ def _build_client(config: Config, audit: AuditLogger) -> Any:
                         await asyncio.to_thread(
                             send_fvp10_transport,
                             config.fvp10_transport_command,
-                            payload,
+                            render_fvp10_receipt(payload),
                             config.fvp10_timeout_seconds,
                         )
                         audit.log("transport_succeeded", correlation_id=correlation,

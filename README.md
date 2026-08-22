@@ -52,12 +52,14 @@ queue:
 
 ```dotenv
 FVP10_ENABLED="true"
-FVP10_TRANSPORT_COMMAND="lpr -P fvp10-raw -l"
+FVP10_TRANSPORT_COMMAND="lp -d star -o raw"
 FVP10_TIMEOUT_SECONDS="15"
 ```
 
-The command is executed without a shell. Transport attempts, successes, and
-failures are written to the JSONL audit log independently of Discord delivery.
+The bridge renders a native Star Line Mode receipt for the FVP10 (576 dots,
+48 Font A columns, resident-font text, feed, and partial cut). The command is
+executed without a shell. Transport attempts, successes, and failures are
+written to the JSONL audit log independently of Discord delivery.
 
 ## Audit log
 
